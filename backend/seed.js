@@ -1,4 +1,6 @@
 const bcrypt = require('bcryptjs');
+const xlsx = require('xlsx');
+const path = require('path');
 const User = require('./models/User');
 const Party = require('./models/Party');
 const Product = require('./models/Product');
@@ -18,49 +20,106 @@ const seedDB = async () => {
     await adminUser.save();
 
     const party1Hash = await bcrypt.hash('party123', 10);
-    const userP1 = new User({ username: 'sharma_distributors', password: party1Hash, role: 'Party' });
+    const userP1 = new User({ username: 'shreeji_overseas', password: party1Hash, role: 'Party' });
     await userP1.save();
     
     const party2Hash = await bcrypt.hash('party123', 10);
-    const userP2 = new User({ username: 'verma_retail', password: party2Hash, role: 'Party' });
+    const userP2 = new User({ username: 'sharma_distributors', password: party2Hash, role: 'Party' });
     await userP2.save();
 
-    const party1 = new Party({ name: 'Sharma Distributors', contactInfo: 'Delhi', roleFlag: 'Both', user: userP1._id });
+    const generateId = () => Math.random().toString(36).substring(2, 8).toUpperCase();
+
+    const party1 = new Party({ name: 'Shreeji Overseas', contactInfo: 'Mumbai', roleFlag: 'Both', trackingId: 'PTY-' + generateId(), user: userP1._id });
     await party1.save();
 
-    const party2 = new Party({ name: 'Verma Retail', contactInfo: 'Mumbai', roleFlag: 'Receiver', user: userP2._id });
+    const party2 = new Party({ name: 'Sharma Distributors', contactInfo: 'Delhi', roleFlag: 'Receiver', trackingId: 'PTY-' + generateId(), user: userP2._id });
     await party2.save();
-    
-    const product1 = new Product({ name: 'Tastino Basil Seeds 360ml', unit: 'pcs' });
-    await product1.save();
 
-    const v1_1 = new Variant({ name: 'Orange', product: product1._id });
-    const v1_2 = new Variant({ name: 'Mango', product: product1._id });
-    const v1_3 = new Variant({ name: 'Lychee', product: product1._id });
-    await Variant.insertMany([v1_1, v1_2, v1_3]);
-
-    const product2 = new Product({ name: 'Premium Almonds', unit: 'kg' });
-    await product2.save();
+    // Read Excel Data
+    const workbook = xlsx.readFile(path.join(__dirname, '../Shreeji Overseas Stock.xlsx'), { cellStyles: true });
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
     
-    const v2_1 = new Variant({ name: '500g Pack', product: product2._id });
-    const v2_2 = new Variant({ name: '1kg Pack', product: product2._id });
-    await Variant.insertMany([v2_1, v2_2]);
+    const range = xlsx.utils.decode_range(worksheet['!ref']);
+    let products = [];
+    let currentProduct = null;
 
-    // Entries for Party 1 (Sharma)
-    const e1 = new LedgerEntry({
-      date: new Date('2023-10-01'), variant: v1_1._id, party: party1._id,
-      type: 'IN', quantity: 100, balanceAfter: 100, rate: 20, createdBy: adminUser._id
-    });
-    const e2 = new LedgerEntry({
-      date: new Date('2023-10-05'), variant: v1_1._id, party: party1._id,
-      type: 'OUT', quantity: 30, balanceAfter: 70, rate: 25, createdBy: adminUser._id
-    });
-    const e3 = new LedgerEntry({
-      date: new Date('2023-10-02'), variant: v1_2._id, party: party1._id,
-      type: 'IN', quantity: 50, balanceAfter: 50, rate: 20, createdBy: adminUser._id
-    });
+    for(let R = range.s.r; R <= range.e.r; ++R) {
+      // Skip header row
+      if (R === 0) continue;
+
+      const cellB_ref = xlsx.utils.encode_cell({c: 1, r: R});
+      const cellC_ref = xlsx.utils.encode_cell({c: 2, r: R});
+      
+      const cellB = worksheet[cellB_ref];
+      const cellC = worksheet[cellC_ref];
+      
+      if (!cellB || !cellB.v) continue;
+      
+      let name = String(cellB.v).trim();
+      const stock = cellC && typeof cellC.v === 'number' ? cellC.v : 0;
+      
+      // Check if it's highlighted yellow (product)
+      const isYellow = cellB.s && cellB.s.fgColor && (cellB.s.fgColor.rgb === 'FFC000' || cellB.s.fgColor.theme === 7);
+      
+      // Clean up specific requested names
+      if (isYellow) {
+        name = name.replace(/\(old manish\)/i, '').trim();
+        currentProduct = { name: name, unit: 'pcs', variants: [] };
+        // If a product also has stock on the same line, add it as 'Original' variant
+        if (stock > 0) {
+          currentProduct.variants.push({ name: 'Original', stock: stock });
+        }
+        products.push(currentProduct);
+      } else {
+        if (currentProduct) {
+          currentProduct.variants.push({ name: name, stock: stock });
+        }
+      }
+    }
+
+    const entries = [];
     
-    await LedgerEntry.insertMany([e1, e2, e3]);
+    for (const pData of products) {
+      if (pData.name === 'undefined' && pData.variants.length === 0) continue;
+
+      // Consolidate duplicate products
+      let product = await Product.findOne({ name: pData.name });
+      if (!product) {
+        product = new Product({ name: pData.name, unit: pData.unit });
+        await product.save();
+      }
+
+      for (const vData of pData.variants) {
+        // Consolidate duplicate variants
+        let variant = await Variant.findOne({ name: vData.name, product: product._id });
+        if (!variant) {
+          variant = new Variant({ name: vData.name, product: product._id });
+          await variant.save();
+        }
+        
+        if (vData.stock > 0) {
+          const entry = new LedgerEntry({
+              date: new Date('2026-06-08T00:00:00Z'),
+              variant: variant._id,
+              party: party1._id, // Adding stock under Shreeji Overseas
+              type: 'IN',
+              quantity: vData.stock,
+              balanceAfter: vData.stock,
+              rate: 0,
+              notes: 'Opening Stock from Excel',
+              createdBy: adminUser._id
+          });
+          entries.push(entry);
+        }
+      }
+    }
+
+    if (entries.length > 0) {
+      await LedgerEntry.insertMany(entries);
+    }
+
+    console.log('Seed updated with Excel Data.');
 
   } catch (err) {
     console.error('Error seeding DB:', err);

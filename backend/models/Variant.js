@@ -9,6 +9,10 @@ const variantSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Product',
     required: true
+  },
+  reorderLevel: {
+    type: Number,
+    default: 10
   }
 }, { timestamps: true });
 

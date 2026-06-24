@@ -25,6 +25,7 @@ const startServer = async () => {
     app.use('/api/auth', require('./routes/auth'));
     app.use('/api/admin', require('./routes/admin'));
     app.use('/api/party', require('./routes/party'));
+    app.use('/api/client', require('./routes/client'));
 
     const PORT = process.env.PORT || 5000;
     app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

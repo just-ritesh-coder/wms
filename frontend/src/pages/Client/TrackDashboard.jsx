@@ -1,13 +1,13 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import AuthContext from '../../context/AuthContext';
+import { useParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { exportToPDF, exportLedgerExcel } from '../../utils/export';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 
-export default function PartyDashboard() {
+export default function TrackDashboard() {
+  const { id } = useParams();
   const [ledgerGroups, setLedgerGroups] = useState([]);
-  const { user } = useContext(AuthContext);
 
   // Filters
   const [fromDate, setFromDate] = useState('');
@@ -26,14 +26,12 @@ export default function PartyDashboard() {
   useEffect(() => {
     const fetchLedger = async () => {
       try {
-        const res = await axios.get(`/api/party/ledger`, {
-          headers: { Authorization: `Bearer ${user.token}` }
-        });
+        const res = await axios.get(`/api/client/track/${id}/ledger`);
         setLedgerGroups(res.data);
       } catch (err) { console.error(err); }
     };
-    if (user?.token) fetchLedger();
-  }, [user]);
+    if (id) fetchLedger();
+  }, [id]);
 
   const flatEntries = [];
   const variantOptions = new Map();

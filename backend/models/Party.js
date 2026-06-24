@@ -12,6 +12,10 @@ const partySchema = new mongoose.Schema({
     type: String, // e.g., 'Supplier', 'Receiver', 'Both'
     default: 'Both'
   },
+  trackingId: {
+    type: String,
+    unique: true
+  },
   user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

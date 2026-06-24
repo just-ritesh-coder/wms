@@ -35,6 +35,17 @@ const ledgerEntrySchema = new mongoose.Schema({
   notes: {
     type: String
   },
+  isReversed: {
+    type: Boolean,
+    default: false
+  },
+  reversalOf: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'LedgerEntry'
+  },
+  reversalReason: {
+    type: String
+  },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
